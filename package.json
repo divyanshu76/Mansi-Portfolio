@@ -9,14 +9,15 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "class-variance-authority": "^0.7.1",
+    "clsx": "^2",
+    "framer-motion": "^12",
+    "gsap": "^3",
+    "lenis": "^1",
+    "lucide-react": "^0.500",
     "next": "16.2.11",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "framer-motion": "^12",
-    "lenis": "^1",
-    "gsap": "^3",
-    "lucide-react": "^0.500",
-    "clsx": "^2",
     "tailwind-merge": "^3"
   },
   "devDependencies": {
