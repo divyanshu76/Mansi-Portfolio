@@ -1,0 +1,644 @@
+<USER_REQUEST>
+// Magnetic Carousel — Originkit
+// Using component defaults.
+
+const RenderTarget = {
+    current: () => "preview",
+    canvas: "canvas",
+    export: "export",
+    thumbnail: "thumbnail",
+    preview: "preview",
+}
+import { useEffect, useRef, useState } from "react"
+
+const EASE_PRESETS: Record<string, string> = {
+    linear: "linear",
+    easeIn: "ease-in",
+    easeOut: "ease-out",
+    easeInOut: "ease-in-out",
+}
+
+// Shown when the user hasn't added their own Content images.
+const DEFAULT_IMAGES = [
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/612d1402-0ad9-4135-3bbc-a30a6a252b00/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/6d2ad64a-102d-4eab-0efe-31479e34b500/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/be854dd1-37aa-4fc7-f569-fdb948109300/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/51984031-9176-484b-f5e0-4af9a8e9ed00/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/34ce1842-4b7a-4d52-0302-38582c341700/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/88369c6d-00cc-4ac9-74ca-0f0965e06300/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/aeaa0756-9647-4f6c-d900-204bd25e4a00/w=800",
+    },
+    {
+        src: "https://imagedelivery.net/IEUjvl3YUlxY-MrTpOAWDQ/316d1761-fd79-4ca9-b8d4-f2bb20521a00/w=800",
+    },
+]
+
+// Turn a Framer Transition object into { dur, ease } for CSS.
+function parseTransition(t: any) {
+    const dur = Math.max(0.05, (t && t.duration) || 0.5)
+    let ease = "cubic-bezier(0.44, 0, 0.56, 1)"
+    if (t && Array.isArray(t.ease) && t.ease.length === 4) {
+        ease = `cubic-bezier(${t.ease.join(", ")})`
+    } else if (t && typeof t.ease === "string" && EASE_PRESETS[t.ease]) {
+        ease = EASE_PRESETS[t.ease]
+    } else if (t && t.type === "spring") {
+        ease = "cubic-bezier(0.34, 1.56, 0.64, 1)" // overshoot approximation
+    }
+    return { dur, ease }
+}
+
+/**
+ * Magnetic Carousel
+ * A row of thin image bars that magnify (width + height) as the cursor nears,
+ * macOS-dock style — the bar under the cursor grows most, neighbors taper off
+ * by distance. Click a bar to open it as a large square; the other bars blur.
+ * Click again (or the backdrop) to collapse. Pure React, no external libs.
+ *
+ * The hover magnify is animated with a continuous JS easing loop (no CSS
+ * transition) so it tracks the cursor smoothly; open/close uses the Transition.
+ *
+ * @framerSupportedLayoutWidth any-prefer-fixed
+ * @framerSupportedLayoutHeight any-prefer-fixed
+ * @framerIntrinsicWidth 600
+ * @framerIntrinsicHeight 388
+ * @framerDisableUnlink
+ */
+export default function MagneticCarousel(props: any) {
+    props = { ...COMPONENT_DEFAULTS, ...props }
+    const {
+        images = DEFAULT_IMAGES,
+        collapsedWidth = 100,
+        hoverWidth = 200,
+        collapsedHeight = 340,
+        hoverHeight = 400,
+        openSize = 600,
+        gap = 16,
+        influence = 200,
+        blur = 2,
+        transition = { type: "tween", duration: 0.3, ease: "easeInOut" },
+        style = {},
+    } = props
+
+    const items: any[] =
+        Array.isArray(images) && images.length > 0 ? images : DEFAULT_IMAGES
+    const count = items.length
+
+    const containerRef = useRef<HTMLDivElement>(null)
+    const [factors, setFactors] = useState<number[]>(() => items.map(() => 0))
+    const [open, setOpen] = useState<number | null>(null)
+    const [closing, setClosing] = useState(false)
+
+    const isCanvas = RenderTarget.current() === RenderTarget.canvas
+
+    // Continuous easing loop: cur eases toward target each frame.
+    const targetRef = useRef<number[]>(items.map(() => 0))
+    const curRef = useRef<number[]>(items.map(() => 0))
+    const loopRef = useRef(0)
+    const closeTimer = useRef<any>(0)
+
+    useEffect(() => {
+        targetRef.current = items.map(() => 0)
+        curRef.current = items.map(() => 0)
+        setFactors(items.map(() => 0))
+    }, [count])
+
+    useEffect(
+        () => () => {
+            cancelAnimationFrame(loopRef.current)
+            clearTimeout(closeTimer.current)
+        },
+        []
+    )
+
+    const startLoop = () => {
+        if (loopRef.current) return
+        const step = () => {
+            const tgt = targetRef.current
+            const cur = curRef.current
+            let moving = false
+            for (let i = 0; i < cur.length; i++) {
+                const d = (tgt[i] ?? 0) - cur[i]
+                if (Math.abs(d) > 0.001) {
+                    cur[i] += d * 0.2 // lerp toward target
+                    moving = true
+                } else {
+                    cur[i] = tgt[i] ?? 0
+                }
+            }
+            setFactors([...cur])
+            loopRef.current = moving ? requestAnimationFrame(step) : 0
+        }
+        loopRef.current = requestAnimationFrame(step)
+    }
+
+    const setTargetFromCursor = (clientX: number) => {
+        const el = containerRef.current
+        if (!el) return
+        const rect = el.getBoundingClientRect()
+        const cx = clientX - rect.left
+        const n = items.length
+        // Stable collapsed-layout slot centers so the magnify peak tracks the
+        // cursor without feedback jitter.
+        const totalBase = n * collapsedWidth + (n - 1) * gap
+        const startX = (rect.width - totalBase) / 2
+        targetRef.current = items.map((_, i) => {
+            const center =
+                startX + i * (collapsedWidth + gap) + collapsedWidth / 2
+            const dist = Math.abs(cx - center)
+            const f = Math.max(0, 1 - dist / influence)
+            return f * f * (3 - 2 * f) // smoothstep falloff
+        })
+        startLoop()
+    }
+
+    const onMove = (e: React.MouseEvent) => {
+        if (isCanvas || open !== null) return
+        setTargetFromCursor(e.clientX)
+    }
+
+    const onLeave = () => {
+        if (open !== null) return
+        targetRef.current = items.map(() => 0)
+        startLoop()
+    }
+
+    const close = () => {
+        targetRef.current = items.map(() => 0)
+        curRef.current = items.map(() => 0)
+        setFactors(items.map(() => 0))
+        setClosing(true)
+        clearTimeout(closeTimer.current)
+        closeTimer.current = setTimeout(() => setClosing(false), dur * 1000)
+        setOpen(null)
+    }
+
+    const sizeFor = (i: number) => {
+        if (open !== null) {
+            return i === open
+                ? { width: openSize, height: openSize }
+                : { width: collapsedWidth, height: collapsedHeight }
+        }
+        const f = factors[i] ?? 0
+        return {
+            width: collapsedWidth + (hoverWidth - collapsedWidth) * f,
+            height: collapsedHeight + (hoverHeight - collapsedHeight) * f,
+        }
+    }
+
+    const { dur, ease } = parseTransition(transition)
+    // Open/close eases via the Transition prop (also animates the blur).
+    // Hover has NO CSS transition — the JS loop above drives it smoothly.
+    const openEase = `width ${dur}s ${ease}, height ${dur}s ${ease}, filter ${dur}s ${ease}, opacity ${dur}s ${ease}`
+    const barTransition = open !== null || closing ? openEase : "none"
+
+    return (
+        <div
+            ref={containerRef}
+            style={{
+                ...style,
+                width: "100%",
+                height: "100%",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap,
+                position: "relative",
+                overflow: "visible",
+            }}
+            onMouseMove={onMove}
+            onMouseLeave={onLeave}
+        >
+            {/* Transparent backdrop — click to close when a bar is open. */}
+            <div
+                style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 1,
+                    pointerEvents: open !== null ? "auto" : "none",
+                }}
+                onClick={close}
+            />
+            {items.map((img, i) => {
+                const { width, height } = sizeFor(i)
+                const blurred = open !== null && i !== open
+                return (
+                    <div
+                        key={i}
+                        onClick={(e) => {
+                            if (isCanvas) return
+                            e.stopPropagation()
+                            if (open === i) close()
+                            else setOpen(i)
+                        }}
+                        style={{
+                            flex: "none",
+                            width,
+                            height,
+                            overflow: "hidden",
+                            cursor: isCanvas ? "default" : "pointer",
+                            transition: barTransition,
+                            willChange: "width, height",
+                            position: "relative",
+                            zIndex: open === i ? 3 : 2,
+                            filter: blurred ? `blur(${blur}px)` : "none",
+                            opacity: blurred ? 0.6 : 1,
+                            backgroundColor: img
+                                ? "transparent"
+                                : `hsl(${(i * 360) / count}, 70%, 58%)`,
+                            backgroundImage: img
+                                ? `url(${img.src})`
+                                : undefined,
+                            backgroundSize: "cover",
+                            backgroundPosition: "center",
+                            backgroundRepeat: "no-repeat",
+                        }}
+                    />
+                )
+            })}
+        </div>
+    )
+}
+
+const COMPONENT_DEFAULTS = {
+    images: DEFAULT_IMAGES,
+    collapsedWidth: 100,
+    hoverWidth: 200,
+    collapsedHeight: 340,
+    hoverHeight: 400,
+    openSize: 600,
+    gap: 16,
+    influence: 200,
+    blur: 2,
+    transition: {
+        type: "tween",
+        duration: 0.3,
+        delay: 0,
+        ease: "easeInOut",
+    },
+}
+
+MagneticCarousel.displayName = "Magnetic Carousel"
+
+replace signature looks section with this new one and 
+STRICT NOTE: A previous task asked for a fix on the "Luxury Process" section
+(dark theme + number badges overlapping card text). That fix was NEVER
+applied — the section is still broken exactly as before. This task
+REPLACES that old fix request. Do a full rebuild this time, not a patch.
+Do NOT report this as complete until you have visually confirmed it in a
+browser screenshot, as instructed at the end of this prompt.
+
+This task has 3 parts: completely rebuild the Hero section, the Preloader,
+and the "Luxury Process" section — fresh premium designs, not incremental
+patches on the current broken versions. Keep the site's established color
+tokens (background #FAF6F1 / #F1E9DF light cream, primary text #2A211C dark
+warm charcoal, secondary text #6B5D52 muted brown-gray, accent #E5B299 /
+#E8D7C4 rose-gold/champagne) — reuse these exact values throughout, do not
+introduce a different palette.
+
+────────────────────────────────────────
+A. Fresh Hero section rebuild (src/components/HeroSection.tsx)
+────────────────────────────────────────
+Design a new, more premium layout and animation sequence from scratch (keep
+using the same headline copy: "Beauty is / an art. / You are / the canvas."
+and the same supporting text/badges/buttons — just redesign how they're
+laid out and animated):
+- Full-viewport height (100dvh), content vertically centered, no overflow.
+- A refined asymmetric layout: large serif headline on one side, a
+  properly-framed portrait image on the other (rounded-2xl/3xl, subtle
+  shadow, no overflow past section bounds).
+- Staggered entrance animation: each headline line fades + slides up in
+  sequence (framer-motion staggerChildren), the portrait image fades/scales
+  in slightly after, and the stat badges ("8+ Years of Artistry", "500+
+  Happy Brides") float in last with a small delay, plus a subtle continuous
+  slow float/bob animation on the badges (small y-axis oscillation).
+- Add a gentle scroll-linked parallax on the portrait image (image moves
+  slightly slower than scroll) using a ref-scoped useScroll/useTransform,
+  not a global scroll listener, to avoid jank.
+- CTA buttons ("Book Now" style primary button, "View Portfolio" secondary)
+  must have clearly readable text in all states — verify contrast
+  explicitly before reporting done.
+- Double-check every heading line individually renders in solid #2A211C
+  (this exact bug has recurred twice before — check each line's className
+  separately, do not assume they share one style).
+
+────────────────────────────────────────
+B. Fresh Preloader rebuild (find and replace the existing Preloader component)
+────────────────────────────────────────
+Design a new luxury loading screen from scratch:
+- Full-screen overlay, background #FAF6F1 (light cream, matching the rest
+  of the site — this preloader must NOT use the old dark background).
+- Center an elegant animated reveal of the "Mansi" wordmark in the site's
+  serif logo font — e.g. letters/strokes drawing in one at a time, or a
+  refined fade+scale-in — in #2A211C, with a small accent flourish in
+  #E5B299 (an underline that draws in, or a small animated dot/icon).
+- A minimal, elegant loading indicator underneath — a thin horizontal line
+  in #E5B299 that fills left-to-right, or a slow pulsing accent dot. No
+  generic spinner.
+- On completion: smooth fade-out (opacity + slight scale) revealing the new
+  Hero section underneath, no flash of unstyled content.
+- Fix the root cause of why the old preloader wasn't reliably showing:
+  check the mount/state logic in layout.tsx or page.tsx and confirm it
+  always shows briefly on initial page load (not on client-side navigation),
+  with a high enough z-index to sit above everything during load.
+
+────────────────────────────────────────
+C. Fresh "Luxury Process" section rebuild (src/components/ProcessSection.tsx)
+────────────────────────────────────────
+This section is currently broken (dark theme never converted, and the
+circular step-number badges overlap and hide the card description text —
+see attached reference of the current broken state). Rebuild it cleanly:
+- Choose ONE of these two directions and execute it fully and consistently:
+    EITHER (a) convert fully to the light theme (background #FAF6F1/#F1E9DF,
+    card background white or #F1E9DF with soft shadow, headings #2A211C,
+    body text #6B5D52, step numbers in #E5B299), 
+    OR (b) keep it as an intentional dark accent section for visual rhythm
+    (background near-black e.g. #0F0B08, headings in warm cream #F5E6D3,
+    body text in a lighter muted tone e.g. #B8ABA0 with strong enough
+    contrast to be clearly readable, step numbers in #E5B299) —
+  pick whichever creates the best visual rhythm against the sections
+  immediately before and after it, and apply it fully — no leftover mixed
+  colors from the old broken version.
+- CRITICAL FIX: reposition the circular step-number badges (01-06) so they
+  NEVER overlap the card title or description text. Place each badge as a
+  small standalone accent above the card title, or as a corner badge
+  outside the text flow — with enough spacing that they cannot visually
+  collide with text at any screen width (test desktop 1440px and mobile
+  375px explicitly).
+- Redesign the 6 cards (Consultation, Skin Analysis, Makeup Trial, Wedding
+  Prep, Luxury Artistry, Final Reveal) with a clean, premium card layout:
+  consistent padding, clear visual hierarchy (number → title → description),
+  and a connecting line/progress indicator between steps if it fits the
+  design (animate it drawing in as the user scrolls, using viewport-
+  triggered animation, not per-pixel scroll JS).
+- Add a staggered fade-up scroll-reveal animation for the 6 cards (each one
+  animating in slightly after the previous, framer-motion whileInView with
+  stagger delay).
+- Add a smooth hover effect per card: subtle lift (translateY) + scale
+  (1.02-1.05) + shadow increase + a slight highlight on the step number,
+  consistent with the GlassCard hover pattern already used elsewhere in the
+  site.
+- If there's a decorative particle/starry background, only keep it if it
+  suits the chosen direction (a) or (b) above and looks intentional, not
+  like a leftover from the old dark theme.
+
+────────────────────────────────────────
+MANDATORY VISUAL VERIFICATION — DO NOT SKIP
+────────────────────────────────────────
+1. Run `npm run build` — confirm zero errors.
+2. Actually open the site in a browser preview (not just read the code) and
+   take screenshots of:
+   - The Preloader while visible.
+   - The new Hero section, fully loaded, desktop width.
+   - The new Hero section, mobile width (375px).
+   - The new Luxury Process section, desktop width — specifically zoom in
+     and confirm NO text is hidden behind any number badge.
+   - The new Luxury Process section, mobile width (375px).
+3. For each of the 3 sections (A, B, C), explicitly state what you visually
+   observed, not what you expect from the code. If you could not actually
+   render and check something, say so honestly instead of claiming success.
+4. List every file changed or created.
+
+Do not report any part of this as complete unless visually confirmed via
+screenshot as instructed above.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-07-27T13:43:07+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\prati\Downloads\NEW PORTFOLIO\index.html (LANGUAGE_HTML)
+Cursor is on line: 1
+Other open documents:
+- c:\Users\prati\Downloads\NEW PORTFOLIO\index.html (LANGUAGE_HTML)
+No browser pages are currently open.
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from None to Gemini 3.1 Pro (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
+---
+<USER_REQUEST>
+chnage the whole hero section with the new design and new design loading screen  match the process section section with the same theme ensure that the her section fit propery in the screen in both pc and mobile make the website best comaptibakle iwth mobile with all sections and design without any error in signature looks section repace the stck images with the bridal images without any error 
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-07-27T13:53:13+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\app\page.tsx (LANGUAGE_TSX)
+Cursor is on line: 1
+Other open documents:
+- c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\app\page.tsx (LANGUAGE_TSX)
+- c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\components\SignatureLooksSection.tsx (LANGUAGE_TSX)
+- c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\components\Preloader.tsx (LANGUAGE_TSX)
+- c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\components\BookingSection.tsx (LANGUAGE_TSX)
+- c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\app\globals.css (LANGUAGE_CSS)
+Browser State:
+  Page A61E5BED13C8396D5EA55D8B8BDD3046 (Mansi | Luxury Makeup Artist — Bridal & Editorial Beauty) - http://localhost:3001/ [ACTIVE]
+    Viewport: 1280x608, Page Height: 11662
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from Gemini 3.1 Pro (High) to Gemini 3.5 Flash (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
+---
+<USER_REQUEST>
+Add this GSAP + Lenis parallax layered-image component to the Hero area,
+placed directly BELOW the existing Hero section. Keep the interaction logic
+and structure exactly as given below — the only intentional changes are:
+(1) replace the 3 placeholder Webflow CDN images with real bridal/makeup
+images, (2) adapt colors/typography to match the site's existing light
+theme design tokens, (3) resolve a potential scroll-library conflict.
+
+────────────────────────────────────────
+1. Check for and resolve a Lenis conflict BEFORE adding this
+────────────────────────────────────────
+This component creates its own `new Lenis()` instance internally. Before
+integrating it, check whether the project already has smooth-scroll (Lenis)
+running elsewhere (e.g. a SmoothScroll wrapper component used in the app
+layout). If Lenis is already running elsewhere:
+  - Do NOT create a second Lenis instance in this component.
+  - Instead, remove the `const lenis = new Lenis();` /
+    `lenis.on('scroll', ScrollTrigger.update)` / `gsap.ticker.add(...)` /
+    `lenis.destroy()` lines from this component, and instead hook
+    ScrollTrigger's update into the EXISTING app-wide Lenis instance's
+    scroll event (you may need to lift/export that Lenis instance from the
+    existing SmoothScroll component, or use a shared context/singleton so
+    this component can subscribe to it).
+If Lenis is NOT already running anywhere else in the app, keep this
+component's own Lenis instance exactly as given, but make sure it doesn't
+get created twice if this component ever re-mounts (guard with a ref or
+module-level singleton).
+This is important — do not skip this check, since running two independent
+Lenis instances at once WILL cause the exact scroll-jank/stuck-scrolling
+bug that was already fixed earlier in this project.
+
+────────────────────────────────────────
+2. Port the component as-is into this Next.js + Tailwind project
+────────────────────────────────────────
+Save it as src/components/ParallaxSection.tsx (or similar). Keep the full
+GSAP timeline / ScrollTrigger / layer-stagger logic, the 4-layer structure,
+and the cleanup logic in useEffect's return function exactly as given below,
+except for the Lenis handling per step 1 above.
+
+Component code to port:
+
+'use client';
+import React, { useEffect, useRef } from 'react';
+import gsap from 'gsap';
+import { ScrollTrigger } from 'gsap/ScrollTrigger';
+import Lenis from '@studio-freight/lenis';
+export function ParallaxComponent() {
+  const parallaxRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    gsap.registerPlugin(ScrollTrigger);
+    const triggerElement = parallaxRef.current?.querySelector('[data-parallax-layers]');
+    if (triggerElement) {
+      const tl = gsap.timeline({
+        scrollTrigger: {
+          trigger: triggerElement,
+          start: "0% 0%",
+          end: "100% 0%",
+          scrub: 0
+        }
+      });
+      const layers = [
+        { layer: "1", yPercent: 70 },
+        { layer: "2", yPercent: 55 },
+        { layer: "3", yPercent: 40 },
+        { layer: "4", yPercent: 10 }
+      ];
+      layers.forEach((layerObj, idx) => {
+        tl.to(
+          triggerElement.querySelectorAll(`[data-parallax-layer="${layerObj.layer}"]`),
+          {
+            yPercent: layerObj.yPercent,
+            ease: "none"
+          },
+          idx === 0 ? undefined : "<"
+        );
+      });
+    }
+    const lenis = new Lenis();
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add((time) => { lenis.raf(time * 1000); });
+    gsap.ticker.lagSmoothing(0);
+    return () => {
+      ScrollTrigger.getAll().forEach(st => st.kill());
+      gsap.killTweensOf(triggerElement);
+      lenis.destroy();
+    };
+  }, []);
+  return (
+    <div className="parallax" ref={parallaxRef}>
+      <section className="parallax__header">
+        <div className="parallax__visuals">
+          <div className="parallax__black-line-overflow"></div>
+          <div data-parallax-layers className="parallax__layers">
+            <img src="LAYER_1_IMG" loading="eager" width="800" data-parallax-layer="1" alt="" className="parallax__layer-img" />
+            <img src="LAYER_2_IMG" loading="eager" width="800" data-parallax-layer="2" alt="" className="parallax__layer-img" />
+            <div data-parallax-layer="3" className="parallax__layer-title">
+              <h2 className="parallax__title">Parallax</h2>
+            </div>
+            <img src="LAYER_4_IMG" loading="eager" width="800" data-parallax-layer="4" alt="" className="parallax__layer-img" />
+          </div>
+          <div className="parallax__fade"></div>
+        </div>
+      </section>
+      <section className="parallax__content">
+        <svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 160 160" fill="none" className="osmo-icon-svg">
+          <path d="M94.8284 53.8578C92.3086 56.3776 88 54.593 88 51.0294V0H72V59.9999C72 66.6273 66.6274 71.9999 60 71.9999H0V87.9999H51.0294C54.5931 87.9999 56.3777 92.3085 53.8579 94.8283L18.3431 130.343L29.6569 141.657L65.1717 106.142C67.684 103.63 71.9745 105.396 72 108.939V160L88.0001 160L88 99.9999C88 93.3725 93.3726 87.9999 100 87.9999H160V71.9999H108.939C105.407 71.9745 103.64 67.7091 106.12 65.1938L106.142 65.1716L141.657 29.6568L130.343 18.3432L94.8284 53.8578Z" fill="currentColor"></path>
+        </svg>
+      </section>
+    </div>
+  );
+}
+
+Make sure GSAP is installed (`gsap` package) — check package.json and install
+it if missing. `@studio-freight/lenis` should already be a dependency from
+earlier in the project.
+
+────────────────────────────────────────
+3. Replace the 3 placeholder images with real bridal/makeup images
+────────────────────────────────────────
+Replace LAYER_1_IMG, LAYER_2_IMG, and LAYER_4_IMG with 3 different real,
+license-free, elegant bridal/beauty photographs (close-up makeup detail,
+bridal portrait, editorial beauty shot — pick 3 that work well layered
+together, e.g. one wide background-feeling shot, one mid-ground portrait,
+one closer detail shot) downloaded into /public with clear filenames (e.g.
+parallax-layer-bg.jpg, parallax-layer-portrait.jpg, parallax-layer-detail.jpg).
+Layer "3" is text, not an image — keep it as text, but change the heading
+from generic "Parallax" to something on-brand, e.g. "Artistry" or "Mansi" —
+styled in the site's serif display font, sized large enough to read clearly
+against the layered images behind/around it.
+
+────────────────────────────────────────
+4. Write the required CSS (currently missing — these are Webflow class
+   names with no styling defined anywhere in this project)
+────────────────────────────────────────
+Create the CSS for: .parallax, .parallax__header, .parallax__visuals,
+.parallax__black-line-overflow, .parallax__layers, .parallax__layer-img,
+.parallax__layer-title, .parallax__title, .parallax__fade, .parallax__content,
+.osmo-icon-svg. Base the visual treatment on: full-bleed section, layered
+images absolutely positioned to overlap and create depth as they scroll at
+different speeds, a soft fade gradient at the section's bottom edge
+(.parallax__fade) blending into the next section's background color
+(#FAF6F1), and the SVG icon in .parallax__content colored with the site's
+accent color (#E5B299) at a reasonable size, centered, appearing after the
+parallax visuals as a closing visual flourish. Keep it feeling premium and
+intentional, matching the site's existing light, elegant aesthetic — not
+a raw unstyled copy of Webflow markup.
+
+────────────────────────────────────────
+5. Placement
+────────────────────────────────────────
+Import and render this component directly below the Hero section (between
+HeroSection and whatever section currently follows it), in the main page
+composition file.
+
+────────────────────────────────────────
+MANDATORY VERIFICATION
+────────────────────────────────────────
+1. Run `npm run build` — confirm zero errors (check especially for missing
+   `gsap` dependency issues).
+2. Open the site in a browser preview and actually scroll through this new
+   section — confirm the layers visually move at different speeds
+   (parallax effect is working), the images loaded correctly (not broken),
+   and there is NO scroll stutter/jank anywhere on the page (this is the
+   critical risk from step 1 — verify by scrolling the ENTIRE page top to
+   bottom, not just this section).
+3. Check mobile width (375px) — confirm the section still looks intentional
+   and doesn't overflow/break the layout.
+4. Report explicitly: was a second Lenis instance found and avoided, or was
+   there no existing Lenis and this component's own instance was kept?
+5. List every file created/changed.
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-07-27T14:11:58+05:30.
+
+The user's current state is as follows:
+Active Document: c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\components\Preloader.tsx (LANGUAGE_TSX)
+Cursor is on line: 1
+Other open documents:
+- c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\components\ProcessSection.tsx (LANGUAGE_TSX)
+- c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\app\page.tsx (LANGUAGE_TSX)
+- c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\components\AboutSection.tsx (LANGUAGE_TSX)
+- c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\components\Footer.tsx (LANGUAGE_TSX)
+- c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty\src\components\HeroSection.tsx (LANGUAGE_TSX)
+No browser pages are currently open.
+Running terminal commands:
+- npm run dev (in c:\Users\prati\Downloads\MAKEUP PORTFOLIO\mansi-beauty, running for 16m56s)
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from Gemini 3.5 Flash (High) to Gemini 3.1 Pro (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
+---

@@ -1,0 +1,196 @@
+@import "tailwindcss";
+
+/* ============================================
+   MANSI BEAUTY — Luxury Design System
+   ============================================ */
+
+@theme inline {
+  /* Color Palette */
+  --color-bg-primary: #FAF6F1;
+  --color-bg-secondary: #F1E9DF;
+  --color-bg-elevated: #FFFFFF;
+  --color-ivory: #FEFCF3;
+  --color-pearl: #F8F4EF;
+  --color-pearl-white: #FDFBF7;
+  --color-champagne: #E5B299;
+  --color-nude: #D4A574;
+  --color-rose-gold: #B76E79;
+  --color-charcoal: #2A211C;
+  --color-text-primary: #2A211C;
+  --color-text-secondary: #6B5D52;
+  --color-text-muted: #9C8C7E;
+  --color-border: rgba(42, 33, 28, 0.08);
+  --color-glass-bg: rgba(250, 246, 241, 0.7);
+  --color-glass-border: rgba(42, 33, 28, 0.06);
+
+  /* Fonts */
+  --font-serif: var(--font-cormorant), "Cormorant Garamond", "Georgia", serif;
+  --font-sans: var(--font-manrope), "Manrope", system-ui, sans-serif;
+  --font-display: var(--font-instrument), "Instrument Serif", serif;
+
+  /* Spacing */
+  --spacing-scene: 20vh;
+  --spacing-section: 12vh;
+
+  /* Easing */
+  --ease-luxury: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-smooth: cubic-bezier(0.25, 0.1, 0.25, 1);
+
+  /* Shadows */
+  --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.3);
+  --shadow-elevated: 0 20px 60px rgba(0, 0, 0, 0.4);
+  --shadow-glow: 0 0 40px rgba(229, 178, 153, 0.08);
+}
+
+/* ============================================
+   BASE RESET & GLOBAL STYLES
+   ============================================ */
+
+* {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+html {
+  scroll-behavior: auto; /* Lenis handles smooth scroll */
+}
+
+body {
+  background: var(--color-bg-primary);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+/* Selection */
+::selection {
+  background: rgba(229, 178, 153, 0.3);
+  color: var(--color-ivory);
+}
+
+/* ============================================
+   TYPOGRAPHY SCALE — Editorial Magazine
+   ============================================ */
+
+.heading-hero {
+  font-family: var(--font-serif);
+  font-size: clamp(3.5rem, 10vw, 9rem);
+  font-weight: 300;
+  line-height: 0.95;
+  letter-spacing: -0.03em;
+  color: var(--color-text-primary);
+}
+
+.heading-scene {
+  font-family: var(--font-serif);
+  font-size: clamp(2.5rem, 6vw, 5.5rem);
+  font-weight: 300;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  color: var(--color-text-primary);
+}
+
+.heading-section {
+  font-family: var(--font-serif);
+  font-size: clamp(1.8rem, 3.5vw, 3rem);
+  font-weight: 400;
+  line-height: 1.15;
+  color: var(--color-text-primary);
+}
+
+.label-luxury {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  color: var(--color-text-secondary);
+}
+
+.body-luxury {
+  font-family: var(--font-sans);
+  font-size: 1.05rem;
+  font-weight: 300;
+  line-height: 1.85;
+  color: var(--color-text-secondary);
+}
+
+/* ============================================
+   GLASS SYSTEM — Crystal Feel
+   ============================================ */
+
+.glass {
+  background: var(--color-glass-bg);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid var(--color-glass-border);
+  box-shadow: var(--shadow-glass);
+  will-change: transform;
+  transform: translateZ(0);
+}
+
+.glass-subtle {
+  background: rgba(20, 20, 20, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid rgba(254, 252, 243, 0.04);
+}
+
+/* ============================================
+   CONTAINER
+   ============================================ */
+
+.container-luxury {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 clamp(1.5rem, 4vw, 4rem);
+}
+
+/* ============================================
+   DIVIDERS
+   ============================================ */
+
+.divider-luxury {
+  width: 60px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--color-champagne), transparent);
+  opacity: 0.4;
+}
+
+/* ============================================
+   REDUCED MOTION
+   ============================================ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ============================================
+   SCROLLBAR — Minimal Luxury
+   ============================================ */
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(229, 178, 153, 0.2);
+  border-radius: 2px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(229, 178, 153, 0.4);
+}
+
+
